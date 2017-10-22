@@ -16,6 +16,8 @@ All access is via service and characteristic UUIDs. The plugin manages handles i
 
 Simultaneous connections to multiple peripherals are supported.
 
+_This plugin isn't intended for scanning beacons._ Try [cordova-plugin-ibeacon](https://github.com/petermetz/cordova-plugin-ibeacon) for iBeacons.
+
 See the [examples](https://github.com/don/cordova-plugin-ble-central/tree/master/examples) for ideas on how this plugin can be used.
 
 ## Supported Platforms
@@ -38,12 +40,21 @@ See the [examples](https://github.com/don/cordova-plugin-ble-central/tree/master
 Edit config.xml to install the plugin for [PhoneGap Build](http://build.phonegap.com).
 
     <gap:plugin name="cordova-plugin-ble-central" source="npm" />
+    <preference name="phonegap-version" value="cli-6.1.0" />
 
 ### PhoneGap Developer App
 
 This plugin is included in iOS and Android versions of the [PhoneGap Developer App](http://app.phonegap.com/).
 
 Note that this plugin's id changed from `com.megster.cordova.ble` to `cordova-plugin-ble-central` as part of the migration from the [Cordova plugin repo](http://plugins.cordova.io/) to [npm](https://www.npmjs.com/).
+
+### iOS 10
+
+For iOS 10, apps will crash unless they include usage description keys for the types of data they access. For Bluetooth, [NSBluetoothPeripheralUsageDescription](https://developer.apple.com/library/prerelease/content/documentation/General/Reference/InfoPlistKeyReference/Articles/CocoaKeys.html#//apple_ref/doc/uid/TP40009251-SW20) must be defined.
+
+This can be done when the plugin is installed using the BLUETOOTH_USAGE_DESCRIPTION variable.
+
+    $ cordova plugin add cordova-plugin-ble-central --variable BLUETOOTH_USAGE_DESCRIPTION="Your description here"
 
 # API
 
@@ -87,6 +98,8 @@ Function `scan` scans for BLE devices.  The success callback is called each time
 
 Advertising information format varies depending on your platform. See [Advertising Data](#advertising-data) for more information.
 
+*Note* in Android SDK >= 23, Location Services must be enabled. If it has not been enabled, the scan method will return no results even when BLE devices are in proximity.
+
 ### Parameters
 
 - __services__: List of services to discover, or [] to find all devices
@@ -119,6 +132,8 @@ Function `startScan` scans for BLE devices.  The success callback is called each
 
 Advertising information format varies depending on your platform. See [Advertising Data](#advertising-data) for more information.
 
+*Note* cf. note above about Location Services in Android SDK >= 23.
+
 ### Parameters
 
 - __services__: List of services to discover, or [] to find all devices
@@ -141,11 +156,11 @@ Advertising information format varies depending on your platform. See [Advertisi
 
 Scan and discover BLE peripherals, specifying scan options.
 
-    ble.startScan(services, options, success, failure);
+    ble.startScanWithOptions(services, options, success, failure);
 
 ### Description
 
-Function `startScanWithOptions` scans for BLE devices. It operates similarly to the `startScan` function, but allows you to specify extra options (like allowing duplicate device reports).  The success callback is called each time a peripheral is discovered. Scanning will continue until `stopScan` is called. 
+Function `startScanWithOptions` scans for BLE devices. It operates similarly to the `startScan` function, but allows you to specify extra options (like allowing duplicate device reports).  The success callback is called each time a peripheral is discovered. Scanning will continue until `stopScan` is called.
 
     {
         "name": "TI SensorTag",
@@ -166,11 +181,11 @@ Advertising information format varies depending on your platform. See [Advertisi
 
 ### Quick Example
 
-    ble.startScan([], 
+    ble.startScanWithOptions([],
         { reportDuplicates: true }
         function(device) {
             console.log(JSON.stringify(device));
-        }, 
+        },
         failure);
 
     setTimeout(ble.stopScan,
@@ -226,6 +241,8 @@ Connect to a peripheral.
 
 Function `connect` connects to a BLE peripheral. The callback is long running. Success will be called when the connection is successful. Service and characteristic info will be passed to the success callback in the [peripheral object](#peripheral-data). Failure is called if the connection fails, or later if the peripheral disconnects. An peripheral object is passed to the failure callback.
 
+[ble.scan](#scan) must be called before calling connect, so the plugin has a list of available peripherals.
+
 __NOTE__: the connect failure callback will be called if the peripheral disconnects.
 
 ### Parameters
@@ -270,6 +287,21 @@ Raw data is passed from native code to the callback as an [ArrayBuffer](#typed-a
 - __success__: Success callback function that is invoked when the connection is successful. [optional]
 - __failure__: Error callback function, invoked when error occurs. [optional]
 
+### Quick Example
+
+Retrieves an [ArrayBuffer](#typed-arrays) when reading data.
+
+    // read data from a characteristic, do something with output data
+    ble.read(device_id, service_uuid, characteristic_uuid, 
+        function(data){
+            console.log("Hooray we have data"+JSON.stringify(data));
+            alert("Successfully read data from device."+JSON.stringify(data));
+        },
+        function(failure){
+            alert("Failed to read characteristic from device.");
+        }
+    );
+   
 ## write
 
 Writes data to a characteristic.
@@ -339,6 +371,8 @@ Function `startNotification` registers a callback that is called *every time* th
 
 Raw data is passed from native code to the success callback as an [ArrayBuffer](#typed-arrays).
 
+See [Background Notifications on iOS](#background-notifications-on-ios)
+
 ### Parameters
 
 - __device_id__: UUID or MAC address of the peripheral
@@ -346,7 +380,7 @@ Raw data is passed from native code to the success callback as an [ArrayBuffer](
 - __characteristic_uuid__: UUID of the BLE characteristic
 - __success__: Success callback function invoked every time a notification occurs
 - __failure__: Error callback function, invoked when error occurs. [optional]
- 
+
 ### Quick Example
 
     var onData = function(buffer) {
@@ -354,14 +388,14 @@ Raw data is passed from native code to the success callback as an [ArrayBuffer](
         var data = new Uint8Array(buffer);
         alert("Button state changed to " + data[0]);
     }
-    
+
     ble.startNotification(device_id, "FFE0", "FFE1", onData, failure);
 
 ## stopNotification
 
 Stop being notified when the value of a characteristic changes.
 
-ble.stopNotification(device_id, service_uuid, characteristic_uuid, success, failure);
+    ble.stopNotification(device_id, service_uuid, characteristic_uuid, success, failure);
 
 ### Description
 
@@ -467,7 +501,7 @@ __States__
 
 Stops state notifications.
 
-    ble.startStateNotifications(success, failure);
+    ble.stopStateNotifications(success, failure);
 
 ### Description
 
@@ -536,7 +570,7 @@ Read the RSSI value on the device connection.
 
 ### Description
 
-Samples the RSSI value (a measure of signal strength) on the connection to a bluetooth device. Requires that you have established a connection before invoking (otherwise an error will be raised). 
+Samples the RSSI value (a measure of signal strength) on the connection to a bluetooth device. Requires that you have established a connection before invoking (otherwise an error will be raised).
 
 ### Parameters
 
@@ -546,7 +580,7 @@ Samples the RSSI value (a measure of signal strength) on the connection to a blu
 
 ### Quick Example
     var rssiSample;
-    ble.connect(device_id, 
+    ble.connect(device_id,
         function(device) {
             rssiSample = setInterval(function() {
                     ble.readRSSI(device_id, function(rssi) {
@@ -654,13 +688,13 @@ Note that iOS uses the string value of the constants for the [Advertisement Data
             "kCBAdvDataChannel": 37,
             "kCBAdvDataServiceData": {
                 "FED8": {
-                    "byteLength": 7 /* data not shown */
+                    "byteLength": 7 // data not shown
                 }
             },
             "kCBAdvDataLocalName": "demo",
             "kCBAdvDataServiceUUIDs": ["FED8"],
             "kCBAdvDataManufacturerData": {
-                "byteLength": 7  /* data not shown */
+                "byteLength": 7  // data not shown
             },
             "kCBAdvDataTxPowerLevel": 32,
             "kCBAdvDataIsConnectable": true
@@ -694,6 +728,30 @@ You can read more about typed arrays in these articles on [MDN](https://develope
 
 UUIDs are always strings and not numbers. Some 16-bit UUIDs, such as '2220' look like integers, but they're not. (The integer 2220 is 0x8AC in hex.) This isn't a problem with 128 bit UUIDs since they look like strings 82b9e6e1-593a-456f-be9b-9215160ebcac. All 16-bit UUIDs should also be passed to methods as strings.
 
+<a name="background-notifications-on-ios">
+
+# Background Scanning and Notifications on iOS
+
+Android applications will continue to receive notification while the application is in the background.
+
+iOS applications need additional configuration to allow Bluetooth to run in the background.
+
+Install the [cordova-custom-config](https://www.npmjs.com/package/cordova-custom-config) plugin.
+
+    cordova plugin add cordova-custom-config
+
+Add a new section to config.xml
+
+    <platform name="ios">
+        <config-file parent="UIBackgroundModes" target="*-Info.plist">
+            <array>
+                <string>bluetooth-central</string>
+            </array>
+        </config-file>
+    </platform>
+    
+See [ble-background](https://github.com/don/ble-background) example project for more details.
+    
 # Testing the Plugin
 
 Tests require the [Cordova Plugin Test Framework](https://github.com/apache/cordova-plugin-test-framework)
@@ -715,6 +773,10 @@ Change the start page in `config.xml`
 Run the app on your phone
 
     cordova run android --device
+    
+# Nordic DFU
+
+If you need Nordic DFU capability, Tomáš Bedřich has a [fork](https://github.com/fxe-gear/cordova-plugin-ble-central) of this plugin that adds an `updateFirmware()` method that allows users to upgrade nRF5x based chips over the air. https://github.com/fxe-gear/cordova-plugin-ble-central
 
 # License
 

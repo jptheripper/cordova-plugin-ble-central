@@ -21,6 +21,13 @@
 static char ADVERTISING_IDENTIFER;
 static char ADVERTISEMENT_RSSI_IDENTIFER;
 
+static NSDictionary *dataToArrayBuffer(NSData* data) {
+    return @{
+             @"CDVType" : @"ArrayBuffer",
+             @"data" :[data base64EncodedStringWithOptions:0]
+             };
+}
+
 @implementation CBPeripheral(com_megster_ble_extension)
 
 -(NSString *)uuidAsString {
@@ -108,7 +115,7 @@ static char ADVERTISEMENT_RSSI_IDENTIFER;
     if (serviceData) {
         NSLog(@"%@", serviceData);
 
-        for(CBUUID *key in serviceData) {
+        for (CBUUID *key in [serviceData allKeys]) {
             [serviceData setObject:dataToArrayBuffer([serviceData objectForKey:key]) forKey:[key UUIDString]];
             [serviceData removeObjectForKey:key];
         }
@@ -251,16 +258,6 @@ static char ADVERTISEMENT_RSSI_IDENTIFER;
 
     return props;
 }
-
-// Borrowed from Cordova messageFromArrayBuffer since Cordova doesn't handle NSData in NSDictionary
-id dataToArrayBuffer(NSData* data)
-{
-    return @{
-             @"CDVType" : @"ArrayBuffer",
-             @"data" :[data base64EncodedStringWithOptions:0]
-             };
-}
-
 
 -(void)setAdvertising:(NSDictionary *)newAdvertisingValue{
     objc_setAssociatedObject(self, &ADVERTISING_IDENTIFER, newAdvertisingValue, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
